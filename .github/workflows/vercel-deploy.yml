@@ -1,23 +1,69 @@
-name: Deploy to Vercel
+name: Deploy to Vercel with Approval
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  deploy:
+  request-approval:
     runs-on: ubuntu-latest
+    steps:
+      - name: Send Approval Request
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Deployment Approval Required for ${{ github.repository }}"
+          body: |
+            New changes have been pushed to main branch (Commit: ${{ github.sha }}).
+            
+            Please review and approve the deployment:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            After approval, the deployment will proceed automatically.
+          to: ${{ secrets.APPROVER_EMAIL }}
+          from: GitHub Actions
+
+  deploy:
+    needs: request-approval
+    runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Deploy to Vercel
+        id: deploy
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          vercel-args: '--prod' 
+          vercel-args: '--prod'
+
+      - name: Send Deployment Success Notification
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Deployment Successful - ${{ github.repository }}"
+          body: |
+            Production deployment completed successfully!
+            
+            Commit: ${{ github.sha }}
+            Deployment URL: ${{ steps.deploy.outputs.url }}
+          to: ${{ secrets.APPROVER_EMAIL }}
+          from: GitHub Actions
