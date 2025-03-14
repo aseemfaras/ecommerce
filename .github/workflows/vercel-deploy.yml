@@ -9,10 +9,10 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  request-approval:
+  notify-approvers:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Approval Request
+      - name: Send Approval Request to First Approver
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
@@ -27,11 +27,29 @@ jobs:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             
             After approval, the deployment will proceed automatically.
-          to: ${{ secrets.APPROVER_EMAIL }}
+          to: ${{ secrets.APPROVER_EMAIL_1 }}
+          from: GitHub Actions
+
+      - name: Send Approval Request to Second Approver
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Deployment Approval Required for ${{ github.repository }}"
+          body: |
+            New changes have been pushed to main branch (Commit: ${{ github.sha }}).
+            
+            Please review and approve the deployment:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            After approval, the deployment will proceed automatically.
+          to: ${{ secrets.APPROVER_EMAIL_2 }}
           from: GitHub Actions
 
   deploy:
-    needs: request-approval
+    needs: notify-approvers
     runs-on: ubuntu-latest
     environment: 
       name: production
@@ -67,5 +85,7 @@ jobs:
             
             Commit: ${{ github.sha }}
             Deployment URL: ${{ steps.deploy.outputs.url }}
-          to: ${{ secrets.APPROVER_EMAIL }}
+            
+            Approved by: ${{ github.actor }}
+          to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: GitHub Actions
