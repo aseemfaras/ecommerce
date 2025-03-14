@@ -1,19 +1,19 @@
 {
   "version": 2,
-  "public": true,
   "builds": [
     {
-      "src": "**/*.html",
+      "src": "**",
       "use": "@vercel/static"
     }
   ],
-  "routes": [
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ]
+  "rewrites": [
+    { "source": "/js/:path*", "destination": "/js/:path*" },
+    { "source": "/css/:path*", "destination": "/css/:path*" },
+    { "source": "/img/:path*", "destination": "/img/:path*" },
+    { "source": "/fonts/:path*", "destination": "/fonts/:path*" },
+    { "source": "/scss/:path*", "destination": "/scss/:path*" },
+    { "source": "/:path*", "destination": "/:path*" }
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 } 
