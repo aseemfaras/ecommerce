@@ -2,28 +2,17 @@ name: Deploy to Vercel with Approval
 
 on:
   push:
-    branches: [ main ]  
+    branches: [ main ]
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  approval-gate:
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Manual Approval Check
-        run: |
-          echo "Deployment requires approval from authorized approvers"
-          echo "Approvers: ${{ secrets.APPROVER_EMAIL_1 }}, ${{ secrets.APPROVER_EMAIL_2 }}"
-          echo "Waiting for approval..."
-
   notify-approvers:
-    needs: approval-gate
     runs-on: ubuntu-latest
     steps:
-      - name: Send Approval Request
+      - name: Send Approval Requests
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
@@ -32,24 +21,34 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Deployment Approval Required for ${{ github.repository }}"
           body: |
-            Deployment request initiated by: ${{ github.actor }}
-            Commit: ${{ github.sha }}
+            New changes to main branch (Commit: ${{ github.sha }})
             
-            Click to review changes:
+            Review changes:
             ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
             
-            Approve deployment here:
+            Approve deployment:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            Post-approval deployment will commence automatically.
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.MAIL_USERNAME }}>"
 
-  deploy:
-    needs: [approval-gate, notify-approvers]
+  approval:
+    needs: notify-approvers
     runs-on: ubuntu-latest
     environment: 
       name: production
-      url: ${{ steps.deploy-to-vercel.outputs.url }}
-    
+    steps:
+      - run: |
+          echo "Deployment approved by: ${{ github.actor }}"
+          echo "Proceeding with deployment..."
+
+  deploy:
+    needs: approval
+    runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: ${{ steps.vercel-deploy.outputs.url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -60,7 +59,7 @@ jobs:
           node-version: '18'
 
       - name: Deploy to Vercel
-        id: deploy-to-vercel
+        id: vercel-deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
@@ -68,9 +67,9 @@ jobs:
           DEPLOY_URL=$(npx vercel --token=${{ secrets.VERCEL_TOKEN }} --prod)
           echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
-      - name: Verify Deployment Status
+      - name: Verify Deployment
         run: |
-          DEPLOY_URL="${{ steps.deploy-to-vercel.outputs.url }}"
+          DEPLOY_URL="${{ steps.vercel-deploy.outputs.url }}"
           MAX_RETRIES=5
           COUNT=0
           
@@ -90,7 +89,7 @@ jobs:
             exit 1
           fi
 
-      - name: Send Success Notification
+      - name: Send Success Email
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -98,18 +97,36 @@ jobs:
           server_port: ${{ secrets.MAIL_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Approved Deployment Complete - ${{ github.repository }}"
+          subject: "✅ Deployment Success - ${{ github.repository }}"
           body: |
-            Production deployment verified and secured
+            Production deployment succeeded!
             
-            Approved by: ${{ github.actor }}
-            Repository: ${{ github.repository }}
-            Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
+            Details:
+            • Repository: ${{ github.repository }}
+            • Branch: ${{ github.ref_name }}
+            • Commit: ${{ github.sha }}
+            • Approved by: ${{ github.actor }}
+            • Live URL: ${{ steps.vercel-deploy.outputs.url }}
             
-            Deployment URL: ${{ steps.deploy-to-vercel.outputs.url }}
-            
-            View deployment: ${{ steps.deploy-to-vercel.outputs.url }}
-            View repository: ${{ github.server_url }}/${{ github.repository }}
+            View deployment: ${{ steps.vercel-deploy.outputs.url }}
+            View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.MAIL_USERNAME }}>"
+
+      - name: Create Deployment Comment
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.name,
+                issue_number: context.issue.number,
+                body: `🚀 Deployment succeeded!\n\n• Commit: \`${context.sha}\`\n• Approved by: ${context.actor}\n• Live URL: ${process.env.DEPLOY_URL}`
+              });
+            } catch (error) {
+              console.log('Skipping PR comment - not a pull request context');
+            }
+        env:
+          DEPLOY_URL: ${{ steps.vercel-deploy.outputs.url }}
