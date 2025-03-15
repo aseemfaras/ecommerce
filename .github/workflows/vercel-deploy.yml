@@ -12,7 +12,7 @@ jobs:
   notify-approvers:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Approval Request to First Approver
+      - name: Send Approval Request to Approvers
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
@@ -23,43 +23,30 @@ jobs:
           body: |
             New changes have been pushed to main branch (Commit: ${{ github.sha }}).
             
-            Please review and approve the deployment:
+            Please review and approve via GitHub:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             
-            After approval, the deployment will proceed automatically.
-          to: ${{ secrets.APPROVER_EMAIL_1 }}
-          from: GitHub Actions
-
-      - name: Send Approval Request to Second Approver
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.MAIL_SERVER }}
-          server_port: ${{ secrets.MAIL_PORT }}
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Deployment Approval Required for ${{ github.repository }}"
-          body: |
-            New changes have been pushed to main branch (Commit: ${{ github.sha }}).
-            
-            Please review and approve the deployment:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            After approval, the deployment will proceed automatically.
-          to: ${{ secrets.APPROVER_EMAIL_2 }}
+            Click "Review deployments" under the production environment to approve.
+            The deployment will only proceed after manual approval.
+          to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: GitHub Actions
 
   deploy:
     needs: notify-approvers
     runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: https://your-vercel-app.com  # Replace with your actual domain
     steps:
       - name: Install jq
         run: sudo apt-get install -y jq
+        
       - name: Trigger Vercel Deployment
         id: trigger-deploy
         run: |
           RESPONSE=$(curl -s -X POST "https://api.vercel.com/v1/integrations/deploy/prj_7Jux9bzyf3Krx6XMPBedfhn2PkNJ/HRriZAqy6m")
           DEPLOY_URL=$(echo "$RESPONSE" | jq -r '.url')
-          echo "::set-output name=url::$DEPLOY_URL"
+          echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
       - name: Send Deployment Success Notification
         if: success()
@@ -74,7 +61,7 @@ jobs:
             Production deployment completed successfully!
             
             Commit: ${{ github.sha }}
-            Deployment URL: ${{ steps.trigger-deploy.outputs.url }}
+            Deployment URL: ${{ steps.trigger-deploy.outputs.DEPLOY_URL }}
             
             Approved by: ${{ github.actor }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
