@@ -8,7 +8,7 @@ jobs:
   notify-approvers:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Approval Requests
+      - name: Send Approval Requests (Email)
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
@@ -31,6 +31,28 @@ jobs:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
+
+      - name: Send Slack Approval Request
+        uses: slackapi/slack-github-action@v1.24.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🔄 Deployment Approval Required* - `${{ github.repository }}`\n\n• *Repository*: ${{ github.repository }}\n• *Branch*: ${{ github.ref_name }}\n• *Commit*: `${{ github.sha }}`\n• *Triggered by*: ${{ github.actor }}\n\n<${{
+                      github.server_url
+                    }}/${{ github.repository }}/commit/${{ github.sha }}|Review Changes>\n\n<${{
+                      github.server_url
+                    }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Approve Deployment in GitHub>"
+                  }
+                }
+              ]
+            }
 
   approval:
     needs: notify-approvers
