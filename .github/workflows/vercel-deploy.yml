@@ -1,18 +1,28 @@
 name: Deploy to Vercel with Approval
 
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:  
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
+  approval-gate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Manual Approval Check
+        run: |
+          echo "Deployment requires approval from authorized approvers"
+          echo "Approvers: ${{ secrets.APPROVER_EMAIL_1 }}, ${{ secrets.APPROVER_EMAIL_2 }}"
+          echo "Waiting for approval..."
+
   notify-approvers:
+    needs: approval-gate
     runs-on: ubuntu-latest
     steps:
-      - name: Send Approval Request to Approvers
+      - name: Send Approval Request
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
@@ -21,34 +31,65 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Deployment Approval Required for ${{ github.repository }}"
           body: |
-            New changes have been pushed to main branch (Commit: ${{ github.sha }}).
+            Deployment request initiated by: ${{ github.actor }}
+            Commit: ${{ github.sha }}
             
-            Please review and approve via GitHub:
+            Click to review changes:
+            ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            
+            Approve deployment here:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            Click "Review deployments" under the production environment to approve.
-            The deployment will only proceed after manual approval.
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
-          from: GitHub Actions
+          from: "GitHub Actions <${{ secrets.MAIL_USERNAME }}>"
 
   deploy:
-    needs: notify-approvers
+    needs: [approval-gate, notify-approvers]
     runs-on: ubuntu-latest
     environment: 
       name: production
-      url: https://your-vercel-app.com  # Replace with your actual domain
+      url: ${{ steps.deploy-to-vercel.outputs.url }}
+    
     steps:
-      - name: Install jq
-        run: sudo apt-get install -y jq
-        
-      - name: Trigger Vercel Deployment
-        id: trigger-deploy
-        run: |
-          RESPONSE=$(curl -s -X POST "https://api.vercel.com/v1/integrations/deploy/prj_7Jux9bzyf3Krx6XMPBedfhn2PkNJ/HRriZAqy6m")
-          DEPLOY_URL=$(echo "$RESPONSE" | jq -r '.url')
-          echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_OUTPUT
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Send Deployment Success Notification
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Deploy to Vercel
+        id: deploy-to-vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --prod --yes
+          DEPLOY_URL=$(npx vercel --token=${{ secrets.VERCEL_TOKEN }} --prod)
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+
+      - name: Verify Deployment Status
+        run: |
+          DEPLOY_URL="${{ steps.deploy-to-vercel.outputs.url }}"
+          MAX_RETRIES=5
+          COUNT=0
+          
+          while [ $COUNT -lt $MAX_RETRIES ]; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "✅ Deployment verified successfully"
+              break
+            fi
+            echo "Waiting for deployment to be ready... (Attempt $((COUNT+1))/$MAX_RETRIES)"
+            sleep 10
+            COUNT=$((COUNT+1))
+          done
+          
+          if [ $COUNT -eq $MAX_RETRIES ]; then
+            echo "❌ Deployment verification failed after $MAX_RETRIES attempts"
+            exit 1
+          fi
+
+      - name: Send Success Notification
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -56,13 +97,18 @@ jobs:
           server_port: ${{ secrets.MAIL_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Deployment Successful - ${{ github.repository }}"
+          subject: "Approved Deployment Complete - ${{ github.repository }}"
           body: |
-            Production deployment completed successfully!
-            
-            Commit: ${{ github.sha }}
-            Deployment URL: ${{ steps.trigger-deploy.outputs.DEPLOY_URL }}
+            Production deployment verified and secured
             
             Approved by: ${{ github.actor }}
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            
+            Deployment URL: ${{ steps.deploy-to-vercel.outputs.url }}
+            
+            View deployment: ${{ steps.deploy-to-vercel.outputs.url }}
+            View repository: ${{ github.server_url }}/${{ github.repository }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
-          from: GitHub Actions
+          from: "GitHub Actions <${{ secrets.MAIL_USERNAME }}>"
