@@ -1,7 +1,8 @@
 name: Deploy to Vercel with Approval
 
 on:
-  workflow_dispatch:  
+  push:
+    branches: [ main ]  
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
