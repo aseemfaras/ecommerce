@@ -39,16 +39,13 @@ jobs:
         with:
           payload: |
             {
+              "text": "Deployment approval required for ${{ github.repository }}",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*🔄 Deployment Approval Required* - `${{ github.repository }}`\n\n• *Repository*: ${{ github.repository }}\n• *Branch*: ${{ github.ref_name }}\n• *Commit*: `${{ github.sha }}`\n• *Triggered by*: ${{ github.actor }}\n\n<${{
-                      github.server_url
-                    }}/${{ github.repository }}/commit/${{ github.sha }}|Review Changes>\n\n<${{
-                      github.server_url
-                    }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Approve Deployment in GitHub>"
+                    "text": "*🔄 Deployment Approval Required* - `${{ github.repository }}`\n\n• *Repository*: ${{ github.repository }}\n• *Branch*: ${{ github.ref_name }}\n• *Commit*: `${{ github.sha }}`\n• *Triggered by*: ${{ github.actor }}\n\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Review Changes>\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Approve Deployment in GitHub>"
                   }
                 }
               ]
@@ -85,7 +82,7 @@ jobs:
           echo "Waiting for deployment to complete..."
           sleep 30
 
-      - name: Send Success Notification
+      - name: Send Success Notifications
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -108,3 +105,23 @@ jobs:
             View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
+
+      - name: Send Slack Success Notification
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          payload: |
+            {
+              "text": "✅ Deployment Successful - ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*✅ Deployment Successful*\n\n• *Repository*: ${{ github.repository }}\n• *Branch*: ${{ github.ref_name }}\n• *Commit*: `${{ github.sha }}`\n• *Approved by*: ${{ github.actor }}\n• *Deployment URL*: ${{ secrets.VERCEL_APP_URL }}\n\n<${{ secrets.VERCEL_APP_URL }}|View Deployment> • <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|View Changes>"
+                  }
+                }
+              ]
+            }
