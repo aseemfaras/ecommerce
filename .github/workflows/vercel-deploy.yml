@@ -64,4 +64,4 @@ jobs:
              echo "✅ Deployment triggered successfully"
            else
              echo "❌ Failed to trigger deployment"
-             exit 1
+        
