@@ -1,7 +1,6 @@
 name: Vercel Deployment with Approval
 
 on:
-  workflow_dispatch:  # Add this to prevent auto-trigger from other workflows
   push:
     branches: [main]
 
@@ -38,18 +37,11 @@ jobs:
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
-  approval:
-    needs: notify-approvers
-    runs-on: ubuntu-latest
-    environment: 
-      name: production
-      url: ${{ secrets.VERCEL_APP_URL }}  # Connect to Vercel environment
-    steps:
-      - name: Validate approval
-        run: echo "Approved by ${{ github.actor }} at $(date)"
-
   deploy:
-    needs: approval
+    needs: notify-approvers
+    environment: 
+      name: production  # This environment must be configured to require manual approval in repo settings.
+      url: https://your-app.vercel.app  # Replace with your actual Vercel app URL
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Vercel Deployment
@@ -71,7 +63,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.sha }}
-          check-name: 'Vercel'  # Wait for Vercel status
+          checkName: 'Vercel'
 
       - name: Send Success Notifications
         if: success()
@@ -89,7 +81,6 @@ jobs:
             • Repository: ${{ github.repository }}
             • Branch: ${{ github.ref_name }}
             • Commit: ${{ github.sha }}
-            • Approved by: ${{ github.actor }}
             • Deployment URL: ${{ secrets.VERCEL_APP_URL }}
             
             View deployment: ${{ secrets.VERCEL_APP_URL }}
