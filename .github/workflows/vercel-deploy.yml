@@ -3,10 +3,15 @@ name: Vercel Deployment with Approval
 on:
   push:
     branches: [ main ]
+  repository_dispatch:
+    types: [approve-deployment]
 
 jobs:
   notify-approvers:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ github.sha }}
     steps:
       - name: Send Approval Requests
         uses: dawidd6/action-send-mail@v3
@@ -27,41 +32,55 @@ jobs:
             Review changes here:
             ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
             
-            Approve deployment here:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            To approve this deployment, click the following URL:
+            ${{ github.server_url }}/${{ github.repository }}/actions/workflows/vercel-deploy.yml?query=event%3Apush
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
-  approval:
-    needs: notify-approvers
+  deploy:
+    if: github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: production
+      url: ${{ secrets.VERCEL_APP_URL }}
     steps:
-      - name: Log Approval Status
+      - name: Verify Deployment Request
         run: |
-          echo "Deployment approved by: ${{ github.actor }}"
-          echo "Proceeding with deployment..."
+          if [[ -z "${{ github.event.client_payload.commit_sha }}" ]]; then
+            echo "❌ No commit SHA provided in the approval request"
+            exit 1
+          fi
+          echo "✅ Deploying commit: ${{ github.event.client_payload.commit_sha }}"
 
-  deploy:
-    needs: approval
-    runs-on: ubuntu-latest
-    steps:
       - name: Trigger Vercel Deployment
         id: deploy
         run: |
           DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}")
-          if [ $? -eq 0 ]; then
+          DEPLOY_STATUS=$?
+          
+          if [ $DEPLOY_STATUS -eq 0 ]; then
             echo "✅ Deployment triggered successfully"
+            echo "deployment_triggered=true" >> $GITHUB_OUTPUT
           else
             echo "❌ Failed to trigger deployment"
+            echo "::error::Failed to trigger Vercel deployment. Response: $DEPLOY_RESPONSE"
             exit 1
           fi
 
       - name: Wait for Deployment
+        if: steps.deploy.outputs.deployment_triggered == 'true'
         run: |
           echo "Waiting for deployment to complete..."
-          sleep 30
+          # Wait for deployment to propagate (Vercel typically takes 10-60 seconds)
+          for i in {1..12}; do
+            DEPLOY_STATUS=$(curl -s "${{ secrets.VERCEL_APP_URL }}")
+            if [ $? -eq 0 ]; then
+              echo "✅ Deployment is live"
+              break
+            fi
+            echo "Checking deployment status... Attempt $i/12"
+            sleep 10
+          done
 
       - name: Send Success Notification
         if: success()
@@ -78,11 +97,11 @@ jobs:
             Details:
             • Repository: ${{ github.repository }}
             • Branch: ${{ github.ref_name }}
-            • Commit: ${{ github.sha }}
+            • Commit: ${{ github.event.client_payload.commit_sha }}
             • Approved by: ${{ github.actor }}
             • Deployment URL: ${{ secrets.VERCEL_APP_URL }}
             
             View deployment: ${{ secrets.VERCEL_APP_URL }}
-            View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+            View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.client_payload.commit_sha }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
