@@ -59,7 +59,7 @@ jobs:
        - name: Trigger Vercel Deployment
          id: deploy
          run: |
-           #!/bin/bash
+          
            
            DEPLOY_RESPONSE=$(curl -s -X POST "***")
            if [ $? -eq 0 ]; then
