@@ -53,20 +53,15 @@ jobs:
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
   deploy:
-    needs: prepare
-    runs-on: ubuntu-latest
-    environment: 
-      name: production
-      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel
-
-      - name: Link Vercel Project
-        run: vercel link --yes --token ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy to Production
-        run: vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+     needs: prepare
+     runs-on: ubuntu-latest
+     steps:
+       - name: Trigger Vercel Deployment
+         id: deploy
+         run: |
+           DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}")
+           if [ $? -eq 0 ]; then
+             echo "✅ Deployment triggered successfully"
+           else
+             echo "❌ Failed to trigger deployment"
+             exit 1
