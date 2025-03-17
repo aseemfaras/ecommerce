@@ -1,7 +1,7 @@
-name: Vercel Deployment with Approval
+ name: Vercel Deployment with Approval
  
  on:
-   push:
+  push:
      branches: [ main ]
  
  jobs:
