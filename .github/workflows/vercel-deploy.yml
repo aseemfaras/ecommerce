@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  prepare:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -18,14 +18,14 @@ jobs:
       - name: Link Vercel Project
         run: vercel link --yes --token ${{ secrets.VERCEL_TOKEN }}
 
-      - name: Trigger Production Deployment
-        id: vercel-deploy
+      - name: Create Preview Deployment
+        id: preview-deploy
         run: |
-          DEPLOY_OUTPUT=$(vercel --prod --token ${{ secrets.VERCEL_TOKEN }})
+          DEPLOY_OUTPUT=$(vercel --token ${{ secrets.VERCEL_TOKEN }})
           echo "$DEPLOY_OUTPUT"
           
-          DEPLOY_URL=$(grep -o 'https://[^ ]*\.vercel\.app' <<< "$DEPLOY_OUTPUT")
-          echo "deployment_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          PREVIEW_URL=$(grep -o 'https://[^ ]*\.vercel\.app' <<< "$DEPLOY_OUTPUT")
+          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
 
       - name: Send Approval Notification
         uses: dawidd6/action-send-mail@v3
@@ -36,22 +36,37 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "🔄 Vercel Deployment Approval Required - ${{ github.repository }}"
           body: |
-            A production deployment is awaiting approval in Vercel.
+            A production deployment is awaiting approval.
 
             📦 Repository: ${{ github.repository }}
             🔀 Branch: ${{ github.ref_name }}
             🔢 Commit: ${{ github.sha }}
             👤 Triggered by: ${{ github.actor }}
-            🌐 Deployment URL: ${{ steps.vercel-deploy.outputs.deployment_url }}
+            🌐 Preview URL: ${{ steps.preview-deploy.outputs.preview_url }}
 
-            ✅ Approve or reject in Vercel Dashboard:
-            https://vercel.com/${{ secrets.VERCEL_ORG_ID }}/${{ secrets.VERCEL_PROJECT_ID }}
+            ✅ Approve the deployment via GitHub Actions:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
             🔍 Commit details:
             ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           to: ${{ secrets.APPROVER_EMAILS }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
-      - name: Monitor Deployment (Optional)
-        if: always()
-        run: echo "Deployment triggered. Check status in Vercel Dashboard."
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Link Vercel Project
+        run: vercel link --yes --token ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Production
+        run: vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
