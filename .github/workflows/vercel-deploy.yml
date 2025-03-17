@@ -1,10 +1,10 @@
 name: Vercel Deployment with Approval
  
- on:
-   push:
-     branches: [ main ]
+on:
+  push:
+    branches: [ main ]
  
- jobs:
+jobs:
    notify-approvers:
      runs-on: ubuntu-latest
      steps:
