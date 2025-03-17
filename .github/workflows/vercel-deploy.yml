@@ -32,24 +32,6 @@ jobs:
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
-      - name: Send Slack Approval Request
-        uses: slackapi/slack-github-action@v1.24.0
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        with:
-          payload: |
-            {
-              "text": "Deployment approval required for ${{ github.repository }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*🔄 Deployment Approval Required* - `${{ github.repository }}`\n\n• *Repository*: ${{ github.repository }}\n• *Branch*: ${{ github.ref_name }}\n• *Commit*: `${{ github.sha }}`\n• *Triggered by*: ${{ github.actor }}\n\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Review Changes>\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Approve Deployment in GitHub>"
-                  }
-                }
-              ]
-            }
 
   approval:
     needs: notify-approvers
