@@ -1,19 +1,17 @@
 {
   "version": 2,
+  "public": true,
+  "regions": ["iad1"],
   "builds": [
     {
-      "src": "**",
-      "use": "@vercel/static"
+      "src": "*.js",
+      "use": "@vercel/node"
     }
   ],
-  "rewrites": [
-    { "source": "/js/:path*", "destination": "/js/:path*" },
-    { "source": "/css/:path*", "destination": "/css/:path*" },
-    { "source": "/img/:path*", "destination": "/img/:path*" },
-    { "source": "/fonts/:path*", "destination": "/fonts/:path*" },
-    { "source": "/scss/:path*", "destination": "/scss/:path*" },
-    { "source": "/:path*", "destination": "/:path*" }
-  ],
-  "cleanUrls": true,
-  "trailingSlash": false
-} 
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.js"
+    }
+  ]
+}

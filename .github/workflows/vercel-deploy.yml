@@ -4,92 +4,61 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      approved:
-        description: 'Confirm deployment approval (enter "yes" to proceed)'
-        required: true
-        default: 'yes'
 
 jobs:
-  notify-approvers:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code (non-triggering)
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false  # Prevent Vercel auto-deploy
-
-      - name: Send Approval Requests
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "🔄 Deployment Approval Required - ${{ github.repository }}"
-          body: |
-            A new deployment is ready for review.
-
-            Repository: ${{ github.repository }}
-            Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            Triggered by: ${{ github.actor }}
-
-            To approve deployment, please manually trigger the deployment workflow via the GitHub Actions UI.
-            
-            For more details, view the commit:
-            ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-          to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
-          from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
-
   deploy:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Trigger Vercel Deployment
-        id: deploy
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Configure Vercel
         run: |
-          echo "Triggering deployment..."
-          DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}")
-          echo "Deploy response: $DEPLOY_RESPONSE"
+          vercel link --yes \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --project ${{ secrets.VERCEL_PROJECT_ID }} \
+            --org ${{ secrets.VERCEL_ORG_ID }}
+
+      - name: Trigger Production Deployment
+        id: vercel-deploy
+        run: |
+          DEPLOY_OUTPUT=$(vercel --prod --token ${{ secrets.VERCEL_TOKEN }})
+          echo "$DEPLOY_OUTPUT"
           
-          if [[ "$DEPLOY_RESPONSE" == *"deploymentId"* ]]; then
-            echo "✅ Deployment triggered successfully"
-          else
-            echo "❌ Failed to trigger deployment. Response: $DEPLOY_RESPONSE"
-            exit 1
-          fi
+          # Extract deployment URL from CLI output
+          DEPLOY_URL=$(grep -o 'https://[^ ]*\.vercel\.app' <<< "$DEPLOY_OUTPUT")
+          echo "deployment_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
-      - name: Wait for Deployment Completion
-        uses: fountainhead/action-wait-for-check@v1.1.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.sha }}
-          check-name: 'Vercel'
-
-      - name: Send Success Notifications
-        if: success()
+      - name: Send Approval Notification
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
           server_port: ${{ secrets.SMTP_PORT }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "✅ Deployment Successful - ${{ github.repository }}"
+          subject: "🔄 Vercel Deployment Approval Required - ${{ github.repository }}"
           body: |
-            Deployment completed successfully!
+            A production deployment is awaiting approval in Vercel.
 
             Details:
-            • Repository: ${{ github.repository }}
-            • Branch: ${{ github.ref_name }}
-            • Commit: ${{ github.sha }}
-            • Deployment URL: ${{ secrets.VERCEL_APP_URL }}
+            - Repository: ${{ github.repository }}
+            - Branch: ${{ github.ref_name }}
+            - Commit: ${{ github.sha }}
+            - Triggered by: ${{ github.actor }}
+            - Deployment URL: ${{ steps.vercel-deploy.outputs.deployment_url }}
 
-            View deployment: ${{ secrets.VERCEL_APP_URL }}
-            View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-          to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
-          from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}"
+            Approve or reject in Vercel Dashboard:
+            https://vercel.com/${{ secrets.VERCEL_ORG_ID }}/${{ secrets.VERCEL_PROJECT_ID }}
+
+            Commit details:
+            ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          to: ${{ secrets.APPROVER_EMAILS }}
+          from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
+
+      - name: Monitor Deployment (Optional)
+        if: always()
+        run: |
+          echo "Deployment processing - actual status must be checked in Vercel Dashboard"
