@@ -15,12 +15,8 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel
 
-      - name: Configure Vercel
-        run: |
-          vercel link --yes \
-            --token ${{ secrets.VERCEL_TOKEN }} \
-            --project ${{ secrets.VERCEL_PROJECT_ID }} \
-            --org ${{ secrets.VERCEL_ORG_ID }}
+      - name: Link Vercel Project
+        run: vercel link --yes --token ${{ secrets.VERCEL_TOKEN }}
 
       - name: Trigger Production Deployment
         id: vercel-deploy
@@ -28,7 +24,6 @@ jobs:
           DEPLOY_OUTPUT=$(vercel --prod --token ${{ secrets.VERCEL_TOKEN }})
           echo "$DEPLOY_OUTPUT"
           
-          # Extract deployment URL from CLI output
           DEPLOY_URL=$(grep -o 'https://[^ ]*\.vercel\.app' <<< "$DEPLOY_OUTPUT")
           echo "deployment_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
 
@@ -43,22 +38,20 @@ jobs:
           body: |
             A production deployment is awaiting approval in Vercel.
 
-            Details:
-            - Repository: ${{ github.repository }}
-            - Branch: ${{ github.ref_name }}
-            - Commit: ${{ github.sha }}
-            - Triggered by: ${{ github.actor }}
-            - Deployment URL: ${{ steps.vercel-deploy.outputs.deployment_url }}
+            📦 Repository: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            🔢 Commit: ${{ github.sha }}
+            👤 Triggered by: ${{ github.actor }}
+            🌐 Deployment URL: ${{ steps.vercel-deploy.outputs.deployment_url }}
 
-            Approve or reject in Vercel Dashboard:
+            ✅ Approve or reject in Vercel Dashboard:
             https://vercel.com/${{ secrets.VERCEL_ORG_ID }}/${{ secrets.VERCEL_PROJECT_ID }}
 
-            Commit details:
+            🔍 Commit details:
             ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           to: ${{ secrets.APPROVER_EMAILS }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
       - name: Monitor Deployment (Optional)
         if: always()
-        run: |
-          echo "Deployment processing - actual status must be checked in Vercel Dashboard"
+        run: echo "Deployment triggered. Check status in Vercel Dashboard."
