@@ -3,15 +3,22 @@ name: Vercel Deployment with Approval
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      approved:
+        description: 'Confirm deployment approval (enter "yes" to proceed)'
+        required: true
+        default: 'yes'
 
 jobs:
   notify-approvers:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code (non-triggering)
         uses: actions/checkout@v4
         with:
-          persist-credentials: false  # Critical to prevent Vercel auto-deploy
+          persist-credentials: false  # Prevent Vercel auto-deploy
 
       - name: Send Approval Requests
         uses: dawidd6/action-send-mail@v3
@@ -22,32 +29,31 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "🔄 Deployment Approval Required - ${{ github.repository }}"
           body: |
-            New deployment requires your approval
-            
+            A new deployment is ready for review.
+
             Repository: ${{ github.repository }}
             Branch: ${{ github.ref_name }}
             Commit: ${{ github.sha }}
             Triggered by: ${{ github.actor }}
+
+            To approve deployment, please manually trigger the deployment workflow via the GitHub Actions UI.
             
-            Review changes here:
+            For more details, view the commit:
             ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-            
-            Approve deployment here:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
 
   deploy:
-    needs: notify-approvers
-    environment: 
-      name: production  # This environment must be configured to require manual approval in repo settings.
-      url: https://your-app.vercel.app  # Replace with your actual Vercel app URL
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Trigger Vercel Deployment
         id: deploy
         run: |
-          # Add deployment verification
+          echo "Triggering deployment..."
           DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}")
           echo "Deploy response: $DEPLOY_RESPONSE"
           
@@ -63,7 +69,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.sha }}
-          checkName: 'Vercel'
+          check-name: 'Vercel'
 
       - name: Send Success Notifications
         if: success()
@@ -76,14 +82,14 @@ jobs:
           subject: "✅ Deployment Successful - ${{ github.repository }}"
           body: |
             Deployment completed successfully!
-            
+
             Details:
             • Repository: ${{ github.repository }}
             • Branch: ${{ github.ref_name }}
             • Commit: ${{ github.sha }}
             • Deployment URL: ${{ secrets.VERCEL_APP_URL }}
-            
+
             View deployment: ${{ secrets.VERCEL_APP_URL }}
             View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
-          from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
+          from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}"
