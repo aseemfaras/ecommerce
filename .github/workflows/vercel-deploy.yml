@@ -1,70 +1,88 @@
 name: Vercel Deployment with Approval
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel
-
-      - name: Link Vercel Project
-        run: vercel link --yes --token ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Create Preview Deployment
-        id: preview-deploy
-        run: |
-          DEPLOY_OUTPUT=$(vercel --token ${{ secrets.VERCEL_TOKEN }})
-          echo "$DEPLOY_OUTPUT"
-          
-          PREVIEW_URL=$(grep -o 'https://[^ ]*\.vercel\.app' <<< "$DEPLOY_OUTPUT")
-          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
-
-      - name: Send Approval Notification
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "🔄 Vercel Deployment Approval Required - ${{ github.repository }}"
-          body: |
-            A production deployment is awaiting approval.
-
-            📦 Repository: ${{ github.repository }}
-            🔀 Branch: ${{ github.ref_name }}
-            🔢 Commit: ${{ github.sha }}
-            👤 Triggered by: ${{ github.actor }}
-            🌐 Preview URL: ${{ steps.preview-deploy.outputs.preview_url }}
-
-            ✅ Approve the deployment via GitHub Actions:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            🔍 Commit details:
-            ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-          to: ${{ secrets.APPROVER_EMAILS }}
-          from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
-
-  deploy:
-     needs: prepare
+ 
+ on:
+   push:
+     branches: [ main ]
+ 
+ jobs:
+   notify-approvers:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Send Approval Requests
+         uses: dawidd6/action-send-mail@v3
+         with:
+           server_address: ${{ secrets.SMTP_SERVER }}
+           server_port: ${{ secrets.SMTP_PORT }}
+           username: ${{ secrets.SMTP_USERNAME }}
+           password: ${{ secrets.SMTP_PASSWORD }}
+           subject: "🔄 Deployment Approval Required - ${{ github.repository }}"
+           body: |
+             New deployment requires your approval
+             
+             Repository: ${{ github.repository }}
+             Branch: ${{ github.ref_name }}
+             Commit: ${{ github.sha }}
+             Triggered by: ${{ github.actor }}
+             
+             Review changes here:
+             ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+             
+             Approve deployment here:
+             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
+           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
+ 
+   approval:
+     needs: notify-approvers
+     runs-on: ubuntu-latest
+     environment:
+       name: production
+     steps:
+       - name: Log Approval Status
+         run: |
+           echo "Deployment approved by: ${{ github.actor }}"
+           echo "Proceeding with deployment..."
+ 
+   deploy:
+     needs: approval
      runs-on: ubuntu-latest
      steps:
        - name: Trigger Vercel Deployment
          id: deploy
          run: |
-          
-           
-           DEPLOY_RESPONSE=$(curl -s -X POST "***")
+           DEPLOY_RESPONSE=$(curl -s -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}")
            if [ $? -eq 0 ]; then
              echo "✅ Deployment triggered successfully"
            else
              echo "❌ Failed to trigger deployment"
+             exit 1
            fi
-        
+ 
+       - name: Wait for Deployment
+         run: |
+           echo "Waiting for deployment to complete..."
+           sleep 30
+ 
+       - name: Send Success Notification
+         if: success()
+         uses: dawidd6/action-send-mail@v3
+         with:
+           server_address: ${{ secrets.SMTP_SERVER }}
+           server_port: ${{ secrets.SMTP_PORT }}
+           username: ${{ secrets.SMTP_USERNAME }}
+           password: ${{ secrets.SMTP_PASSWORD }}
+           subject: "✅ Deployment Successful - ${{ github.repository }}"
+           body: |
+             Deployment completed successfully!
+             
+             Details:
+             • Repository: ${{ github.repository }}
+             • Branch: ${{ github.ref_name }}
+             • Commit: ${{ github.sha }}
+             • Approved by: ${{ github.actor }}
+             • Deployment URL: ${{ secrets.VERCEL_APP_URL }}
+             
+             View deployment: ${{ secrets.VERCEL_APP_URL }}
+             View changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+           to: ${{ secrets.APPROVER_EMAIL_1 }},${{ secrets.APPROVER_EMAIL_2 }}
+           from: "GitHub Actions <${{ secrets.SMTP_USERNAME }}>"
