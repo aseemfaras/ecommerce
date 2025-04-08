@@ -18,7 +18,7 @@ jobs:
           secret: ${{ secrets.GITHUB_TOKEN }}
           approvers: aseemkdigital
           minimum-approvals: 1
-          timeout-minutes: 30 
+          timeout-minutes: 60 
 
       - name: Trigger Vercel Deployment
         run: |
